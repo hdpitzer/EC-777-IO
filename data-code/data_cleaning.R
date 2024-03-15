@@ -5,7 +5,7 @@
 ## ECON 777 PS 1
 ## Author: Hannah Pitzer
 ## Date created: 3/5/2024
-## Last edited: 3/7/2024
+## Last edited: 3/13/2024
 
 ################################################################################
 
@@ -71,4 +71,55 @@ market.df <- market.df %>%
   left_join(plan.df, by = c('choice' = 'plan_name'))
 
 
-# 
+# Hausman instruments
+
+market.df <- market.df %>%
+  group_by(plan, year) %>%
+  mutate(
+    plan_yr_avg_price = mean(avg_price),
+    plan_yr_avg_pp_price = mean(avg_pp_price),
+    n_plan_yr = n()
+  ) %>%
+  ungroup() %>%
+  mutate(
+    hausman = (n_plan_yr*plan_yr_avg_price - avg_price) / (n_plan_yr -1), 
+    pp_housman = (n_plan_yr*plan_yr_avg_pp_price - avg_pp_price) / (n_plan_yr - 1)
+  ) %>%
+  dplyr::select(!c(plan_yr_avg_price, plan_yr_avg_pp_price, n_plan_yr))
+
+
+# Mean utility -- Berry
+
+market.df <- market.df %>%
+  group_by(rating_area, year) %>%
+  mutate(
+    mean_util_indiv = log(mkt_share_indiv) - log(mkt_share_indiv[plan == "Uninsured"]), 
+    mean_util_hh = log(mkt_share_hh) - log(mkt_share_hh[plan == "Uninsured"])
+  )
+
+
+# nest shares
+
+market.df <- market.df %>%
+  group_by(rating_area, year, metal_level) %>%
+  mutate(
+    nest_share_indiv = n_indiv / sum(n_indiv), 
+    nest_share_hh = n_household / sum(n_household) 
+  )
+
+market.df <- market.df %>%
+  filter(plan != "Uninsured")
+
+
+
+# Export data
+
+write_tsv(house.df, "data/output/indiv_data.txt")
+write_tsv(market.df, "data/output/market_data.txt")
+
+subset.df <- market.df %>%
+  filter(rating_area <= 3)
+
+write_tsv(subset.df, "data/output/market_subset.txt")
+
+rm(list = ls())
