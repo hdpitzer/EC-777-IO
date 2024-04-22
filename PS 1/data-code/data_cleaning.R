@@ -4,8 +4,6 @@
 ## Data Cleaning
 ## ECON 777 PS 1
 ## Author: Hannah Pitzer
-## Date created: 3/5/2024
-## Last edited: 3/13/2024
 
 ################################################################################
 
@@ -15,15 +13,15 @@ library(dplyr)
 
 # Import data
 
-house.df <- read_csv("data/input/households777.csv") %>%
+house.df <- read_csv("PS 1/data/input/households777.csv") %>%
   dplyr::select(!'...1') %>%
   rename_with(tolower)
 
-house_plan.df <- read_csv("data/input/household_plan_year777.csv") %>%
+house_plan.df <- read_csv("PS 1/data/input/household_plan_year777.csv") %>%
   dplyr::select(!'...1') %>%
   rename_with(tolower)
 
-plan.df <- read_csv("data/input/plans777.csv") %>%
+plan.df <- read_csv("PS 1/data/input/plans777.csv") %>%
   dplyr::select(!'...1') %>%
   rename_with(tolower)
 
@@ -57,8 +55,6 @@ market.df <- house.df %>%
     avg_pp_price = mean(pp_price)
   )
 
-### Add avg market demographics
-
 
 # Merge plan data
 
@@ -68,7 +64,8 @@ market.df <- market.df %>%
     mkt_share_indv = n_indv / sum(n_indv),
     mkt_share_hh = n_household / sum(n_household)
   ) %>%
-  left_join(plan.df, by = c('choice' = 'plan_name'))
+  left_join(plan.df, by = c('choice' = 'plan_name')) %>%
+  rename(plan = choice)
 
 
 # Hausman instruments
@@ -83,7 +80,7 @@ market.df <- market.df %>%
   ungroup() %>%
   mutate(
     hausman = (n_plan_yr*plan_yr_avg_price - avg_price) / (n_plan_yr -1), 
-    pp_housman = (n_plan_yr*plan_yr_avg_pp_price - avg_pp_price) / (n_plan_yr - 1)
+    pp_hausman = (n_plan_yr*plan_yr_avg_pp_price - avg_pp_price) / (n_plan_yr - 1)
   ) %>%
   dplyr::select(!c(plan_yr_avg_price, plan_yr_avg_pp_price, n_plan_yr))
 
@@ -93,7 +90,7 @@ market.df <- market.df %>%
 market.df <- market.df %>%
   group_by(rating_area, year) %>%
   mutate(
-    mean_util_indiv = log(mkt_share_indiv) - log(mkt_share_indiv[plan == "Uninsured"]), 
+    mean_util_indv = log(mkt_share_indv) - log(mkt_share_indv[plan == "Uninsured"]), 
     mean_util_hh = log(mkt_share_hh) - log(mkt_share_hh[plan == "Uninsured"])
   )
 
@@ -103,7 +100,7 @@ market.df <- market.df %>%
 market.df <- market.df %>%
   group_by(rating_area, year, metal_level) %>%
   mutate(
-    nest_share_indiv = n_indiv / sum(n_indiv), 
+    nest_share_indv = n_indv / sum(n_indv), 
     nest_share_hh = n_household / sum(n_household) 
   )
 
@@ -114,12 +111,10 @@ market.df <- market.df %>%
 
 # Export data
 
-write_tsv(house.df, "data/output/indiv_data.txt")
-write_tsv(market.df, "data/output/market_data.txt")
+write_tsv(house.df, "PS 1/data/output/indv_data.txt")
+write_tsv(market.df, "PS 1/data/output/market_data.txt")
 
 subset.df <- market.df %>%
   filter(rating_area <= 3)
 
-write_tsv(subset.df, "data/output/market_subset.txt")
-
-rm(list = ls())
+write_tsv(subset.df, "PS 1/data/output/market_subset.txt")
