@@ -1,6 +1,16 @@
+
+################################################################################
+
+## Counterfactaul -- 3c
+## ECON 777 PS 1
+## Author: Hannah Pitzer
+
+################################################################################
+
+
 # Setup BLP simulation
 
-set.seed(6)
+set.seed(123)
 
 # Simulation parameters
 ns <- 500  # number of simulation draws
@@ -26,8 +36,8 @@ V <- matrix(rnorm(ns * (length(covariates)+1)),length(covariates)+1,ns)
 
 # Vector of product characteristics and premium
 # This matrix is (total_offerings * K)
-X <- as.matrix(cbind(1,market.df[,c(covariates,"avg_price")])) # make sure all entries are numbers
-X1 <- X[,c(1,covariates,"avg_price")] # variables that enter non-random part of utility (delta)
+X <- as.matrix(cbind(1,market.df[,c(covariates,"avg_sub_premium")])) # make sure all entries are numbers
+X1 <- X[,c(1,covariates,"avg_sub_premium")] # variables that enter non-random part of utility (delta)
 X2 <- X[,c(1,covariates)] # variables that enter random part of utility
 
 
@@ -57,7 +67,7 @@ inside_good_share <- by(market.df$mkt_share_hh, market.df$rating_area, sum)
 outside_good_share <- 1 - inside_good_share
 
 # Use OLS to estimate parameters
-logit <- lm(mean_util_hh ~ av + hmo + avg_price, data = market.df)
+logit <- lm(mean_util_hh ~ av + hmo + avg_sub_premium, data = market.df)
 summary(logit)
 
 # Compute initial delta 
@@ -149,6 +159,89 @@ compute.objective.value <- function(theta2) {
 }
 
 
+compute.jacobian <- function(theta2,ind_choice_matrix) {
+  
+  partial_share_partial_delta <- matrix(0,total_offerings,total_offerings)
+  
+  for(i in 1:ns) {
+    shares <- ind_choice_matrix[,i]
+    
+    # Cross Partials
+    partials_ind <- (shares %*% t(shares))
+    
+    # Own Partials
+    diag(partials_ind) <- shares * (1-shares)
+    
+    # Add to population partial matrix
+    partial_share_partial_delta <- partial_share_partial_delta + partials_ind
+  }
+  partial_share_partial_delta <- 1/ns * partial_share_partial_delta  * I_market
+  
+  partial_share_partial_theta2 <- matrix(0,total_offerings,length(theta2))
+  
+  for(l in 1:length(theta2)) { 
+    
+    partials_ind_covariate <- rep(0,length(total_offerings))
+    
+    for(i in 1:ns) { # loop through each individual			
+      shares <- ind_choice_matrix[,i]
+      inner_sum_by_market <- by(X2[,l] * shares,market.df$rating_area,sum)
+      partials_ind_covariate <- partials_ind_covariate + 
+        V[l,i] * shares * (X2[,l] - inner_sum_by_market[as.character(market.df$rating_area)])
+    }
+    partial_share_partial_theta2[,l] <- partials_ind_covariate
+  }
+  partial_share_partial_theta2 <- 1/ns * partial_share_partial_theta2
+  
+  jacobian <- matrix(0,total_offerings,length(theta2))
+  for(t in unique(market.df$rating_area)) {
+    market_indices <- which(market.df$rating_area == t)
+    jacobian[market_indices,] <- 
+      solve(partial_share_partial_delta[market_indices,market_indices]) %*% 
+      partial_share_partial_theta2[market_indices,] 
+  }
+  
+  return(jacobian)
+}
+
+# BLP standard errors
+# Variance-Covariance matrix 
+
+compute.BLP.standard.errors <- function(theta2,xi,ind_choice_matrix) {
+  
+  jacobian <- compute.jacobian(theta2,ind_choice_matrix)
+  N <- total_offerings
+  
+  # Standard Errors for theta2
+  
+  S <- matrix(0,dim(Z)[2],dim(Z)[2])
+  for(j in 1:N) {
+    Z_j <- Z[j,]
+    xi_j <- xi[j,]
+    S <- S + 1/N * (Z_j %*% t(xi_j) %*% xi_j %*% t(Z_j)) # same dimension as W
+  }
+  
+  A <- t(jacobian) %*% Z %*% W %*% t(Z) %*% jacobian 
+  B <- t(jacobian) %*% Z %*% W %*% S %*% W %*% t(Z) %*% jacobian
+  
+  # Apply sandwich formula and compute standard errors
+  VCOV <- (solve(A) %*% B %*% solve(A))
+  standard_errors <- sqrt(diag(VCOV))
+  
+  # Standard Errors for theta1
+  
+  A <- t(X1) %*% Z %*% W %*% t(Z) %*% X1
+  B <- t(X1) %*% Z %*% W %*% S %*% W %*% t(Z) %*% X1
+  
+  # Apply sandwich formula and compute standard errors
+  VCOV <- (solve(A) %*% B %*% solve(A))
+  standard_errors <- c(sqrt(diag(VCOV)),standard_errors)
+  
+  
+  return(standard_errors)
+}
+
+
 ####### Estimate
 
 if(optimization_method == "simplex") {
@@ -165,10 +258,46 @@ theta1 <- solve(t(X1) %*% Z %*% W %*% t(Z) %*% X1) %*% t(X1) %*% Z %*% W %*% t(Z
 
 # Unobserved product characteristics
 xi <- delta - X1 %*% theta1 
-data$xi <- xi
+market.df$xi <- xi
 
 # Estimated price coefficient
-alpha <- as.numeric(-theta1["avg_price",])
+alpha <- as.numeric(-theta1["avg_sub_premium",])
 
 # Compute individual choice probabilities
 ind_choice_matrix <- predict.shares(theta2,delta)$ind_choice_matrix
+
+# Compute standard errors
+standard_errors <- compute.BLP.standard.errors(theta2,xi,ind_choice_matrix)
+
+# Run Nested Logit to include in summary table
+nested_logit <- lm(mean_util_hh ~ av + hmo + avg_sub_premium + log(nest_share_hh), 
+                   data = market.df)
+summary(nested_logit)
+
+# Create a fake blp output object to input into table
+market.df$sigma1 <- rnorm(total_offerings)
+market.df$sigma2 <- rnorm(total_offerings)
+market.df$sigma3 <- rnorm(total_offerings)
+#market.df$sigma4 <- rnorm(total_offerings)
+
+blp_fake <- lm(mean_util_hh ~ av + hmo + avg_sub_premium + sigma1 + sigma2 + sigma3 ,
+               data = market.df)
+
+pvalues_logit <- 2 * pnorm(abs(coef(logit)/sqrt(diag(vcov(logit)))), lower.tail=FALSE)
+pvalues_nested_logit <- 2 * pnorm(abs(coef(nested_logit)/sqrt(diag(vcov(nested_logit)))), lower.tail=FALSE)
+pvalues_blp <- 2 * pnorm(abs(c(theta1,theta2)/standard_errors), lower.tail=FALSE)
+
+latex_tab <- texreg(list(logit, nested_logit,blp_fake),
+                    custom.model.names=c("Logit","Nested Logit","BLP"),
+                    custom.coef.names=c("Intercept","AV","HMO","Premium",
+                                        "Log Within Nest Share","St. Dev. Intercept",
+                                        "St. Dev. AV","St. Dev. HMO"),
+                    override.coef=list(coef(logit),coef(nested_logit),c(theta1,abs(theta2))),
+                    override.se=list(sqrt(diag(vcov(logit))),sqrt(diag(vcov(nested_logit))),standard_errors), 
+                    override.pval=list(pvalues_logit,pvalues_nested_logit,pvalues_blp),
+                    digits=3,caption="Counterfactual Estimates",
+                    include.rsquared = FALSE, include.adjrs = FALSE, include.nobs = TRUE, 
+                    include.fstatistic = FALSE, inline.css = FALSE, include.rmse = FALSE,
+                    caption.above = TRUE)	
+
+writeLines(latex_tab, "PS 1/output/counterfactual_table.tex")
