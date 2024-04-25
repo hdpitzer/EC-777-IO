@@ -1,12 +1,3 @@
-
-################################################################################
-
-## Data Cleaning
-## ECON 777 PS 1
-## Author: Hannah Pitzer
-
-################################################################################
-
 library(tidyverse)
 library(dplyr)
 
@@ -52,14 +43,7 @@ market.df <- house.df %>%
     avg_sub_premium = mean(sub_premium), 
     avg_price = mean(price), 
     avg_pp_sub_premium = mean(pp_sub_premium), 
-    avg_pp_price = mean(pp_price),
-    perc_0to17 = mean(perc_0to17),
-    perc_18to25 = mean(perc_18to25),
-    perc_26to34 = mean(perc_26to34),
-    perc_35to44 = mean(perc_35to44),
-    perc_45to54 = mean(perc_45to54),
-    perc_55to64 = mean(perc_55to64),
-    perc_65plus = mean(perc_65plus)
+    avg_pp_price = mean(pp_price)
   )
 
 
@@ -80,14 +64,14 @@ market.df <- market.df %>%
 market.df <- market.df %>%
   group_by(plan, year) %>%
   mutate(
-    plan_yr_avg_price = mean(avg_price),
-    plan_yr_avg_pp_price = mean(avg_pp_price),
+    plan_yr_avg_price = mean(avg_sub_premium),
+    plan_yr_avg_pp_price = mean(avg_pp_sub_premium),
     n_plan_yr = n()
   ) %>%
   ungroup() %>%
   mutate(
-    hausman = (n_plan_yr*plan_yr_avg_price - avg_price) / (n_plan_yr -1), 
-    pp_hausman = (n_plan_yr*plan_yr_avg_pp_price - avg_pp_price) / (n_plan_yr - 1)
+    hausman = (n_plan_yr*plan_yr_avg_price - avg_sub_premium) / (n_plan_yr -1), 
+    pp_hausman = (n_plan_yr*plan_yr_avg_pp_price - avg_pp_sub_premium) / (n_plan_yr - 1)
   ) %>%
   dplyr::select(!c(plan_yr_avg_price, plan_yr_avg_pp_price, n_plan_yr))
 
@@ -114,14 +98,3 @@ market.df <- market.df %>%
 market.df <- market.df %>%
   filter(plan != "Uninsured")
 
-
-
-# Export data
-
-write_tsv(house.df, "PS 1/data/output/indv_data.txt")
-write_tsv(market.df, "PS 1/data/output/market_data.txt")
-
-subset.df <- market.df %>%
-  filter(rating_area <= 3)
-
-write_tsv(subset.df, "PS 1/data/output/market_subset.txt")
