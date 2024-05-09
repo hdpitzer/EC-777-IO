@@ -170,3 +170,18 @@ nested_ope1 <- mean(nested_ope1)
 nested_cpe1 <- t(market.df$avg_price %*% t(1/market.df$mkt_share_hh)) * partials5 * I_market
 diag(nested_cpe1) <- 0
 nested_cpe1 <- sum(nested_cpe1)/length(which(nested_cpe1 > 0))
+
+
+
+
+### Organizing
+
+logit_elast <- data.frame(rbind(logit_ope, logit_cpe))
+
+nested_elast <- data.frame(rbind(nested_ope, nested_cpe))
+
+blp_elast <- data.frame(rbind(blp_ope, blp_cpe))
+
+elasticities <- cbind(logit = logit_elast, nested_logit = nested_elast, blp = blp_elast)
+rownames(elasticities) <- c('Own Price Elasticity', 'Cross Price Elasticity')
+colnames(elasticities) <- c('Logit', 'Nested Logit', 'BLP')
